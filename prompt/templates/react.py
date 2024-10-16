@@ -1,3 +1,0 @@
-REACT_PROMPT: str = (
-    "",
-)
