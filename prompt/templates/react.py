@@ -1,0 +1,3 @@
+REACT_PROMPT: str = (
+    "",
+)
