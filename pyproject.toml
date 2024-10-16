@@ -1,0 +1,16 @@
+[tool.poetry]
+name = "spellbook"
+version = "0.1.0"
+description = "Lightweight package for building chain-of-thought agents"
+authors = ["Joen Tan <joentze01@gmail.com>"]
+license = "Apache 2.0 License"
+readme = "README.md"
+
+[tool.poetry.dependencies]
+python = "^3.12"
+openai = "^1.51.2"
+
+
+[build-system]
+requires = ["poetry-core"]
+build-backend = "poetry.core.masonry.api"
