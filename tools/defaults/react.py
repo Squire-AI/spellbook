@@ -1,62 +1,33 @@
-from typing import Any, Dict
+from typing import List
 from ..models import Tool
 
-REACT_PLANNING_TOOLS: Dict[str, Tool] = {
-    "THOUGHT": Tool(
-        name="Thought",
-        description="Use Thought to describe your thoughts about the question you have been asked",
+REACT_PLANNING_TOOLS: List[Tool] = [
+    Tool(
+        name="StepChoice",
+        description="You think step by step, this is a single step and you can choose between, THOUGHT, OBSERVE, ACTION, COMPLETE",
         parameters={
             "type": "object",
             "properties": {
-                    "Thought": {
+                    "choice": {
                         "type": "string",
-                        "description": "Thought of the question you have been asked"
+                        "enum": [
+                            "THOUGHT",
+                            "OBSERVE",
+                            "ACTION",
+                            "COMPLETE"
+                        ],
+                        "description": "The most appropriate step to take in the current step-by-step reasoning, if the task has been satisfied use COMPLETE"
                     },
+                "prompt": {
+                        "type": "string",
+                        "description": "The most appropriate & descriptive prompt that describes what is needed in the current stage"
+                    }
             },
             "additionalProperties": False,
             "required": [
                 "Thought"
             ]
         },
-    ),
-    "ACTION": Tool(
-        name="Action",
-        description="Use Action to run one of the actions available to you",
-        parameters={
-            "type": "object",
-            "properties": {
-                    "ActionName": {
-                        "type": "string",
-                        "description": "Name of the action you want to use"
-                    },
-                "ActionDescription": {
-                        "type": "string",
-                        "description": "Detailed description of how you want your action to run, for example for action = calculator: 'Use Calculator to find 3**2'"
-                        }
-            },
-            "additionalProperties": False,
-            "required": [
-                "ActionName",
-                "ActionDescription"
-            ]
-        },
-    ),
-    "COMPLETE": Tool(
-        name="Complete",
-        description="Use Complete when the task is completed",
-        parameters={
-            "type": "object",
-            "properties": {
-                    "Complete": {
-                        "type": "boolean",
-                        "description": ""
-                    },
-            },
-            "additionalProperties": False,
-            "required": [
-                "Complete"
-            ]
-        },
-    ),
+    )
 
-}
+]
