@@ -9,6 +9,7 @@ from pydantic import BaseModel, Field
 
 
 class Tool(BaseModel):
+    id: Optional[str] = None
     name: str = Field(..., pattern=r"^[A-Za-z0-9_]+$",
                       description="Name must only contain letters, numbers, and underscores, and must not contain spaces or other symbols")
     description: str = Field(...)
