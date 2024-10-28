@@ -15,7 +15,8 @@ class OpenAIAgent(ABC):
             temperature: float,
             max_iterations: int,
             tools: List[Tool],
-            messages: List[ChatCompletionMessageParam]
+            messages: List[ChatCompletionMessageParam],
+            **kwargs
     ) -> None:
         self.client = client
         self.model = model

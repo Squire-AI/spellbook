@@ -21,13 +21,47 @@ REACT_PLANNING_TOOLS: List[Tool] = [
                 "prompt": {
                         "type": "string",
                         "description": "The most appropriate & descriptive prompt that describes what is needed in the current stage"
-                    }
+                        }
             },
             "additionalProperties": False,
             "required": [
-                "Thought"
+                "choice", "prompt"
             ]
         },
     )
 
 ]
+
+REACT_FORMATTED_OUTPUT_TOOL: Tool = Tool(
+    name="ReactFormattedOutput",
+    description="You take the message history & return a formatted response",
+    parameters={
+        "type": "object",
+        "properties": {
+            "content": {
+                "type": "string",
+                "description": "Text response to the user's query"
+            },
+            "sources": {
+                "type": "array",
+                "description": "List of sources used for responses, if no sources used, leave as empty",
+                "items": {
+                    "type": "string",
+                    "description": "name of the source used"
+                }
+            },
+            "tools_used": {
+                "type": "array",
+                "description": "List of tools used for responses, if no tools used, leave as empty",
+                "items": {
+                    "type": "string",
+                    "description": "name of the tool"
+                }
+            }
+        },
+        "additionalProperties": False,
+        "required": [
+            "content", "sources", "tools_used"
+        ]
+    },
+)

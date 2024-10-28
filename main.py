@@ -16,10 +16,11 @@ import json
 from typing import Any, Callable, Coroutine, Dict, List
 from openai import AsyncOpenAI
 from openai.types.chat import (ChatCompletionMessage, ChatCompletionMessageParam,
-                               ChatCompletionUserMessageParam, ChatCompletionAssistantMessageParam, ChatCompletionFunctionMessageParam)
+                               ChatCompletionAssistantMessageParam)
 from models import AppEnviron, OpenAIAgent
+from models.outputs.format import FormattedResponse
 from models.react.outputs import ReactChoiceOutput
-from tools.defaults.react import REACT_PLANNING_TOOLS
+from tools.defaults.react import REACT_PLANNING_TOOLS, REACT_FORMATTED_OUTPUT_TOOL
 from prompts.templates.react import REACT_PROMPT
 from prompts.generator import generate_prompt
 from tools.models import Tool
@@ -29,7 +30,11 @@ client = AsyncOpenAI(api_key=environ.openai_api_key)
 
 class ReactAgent(OpenAIAgent):
 
-    def __init__(self, tool_map: Dict[str, Callable[[Any], Coroutine[Any, Any, str]]], react_prompt: str = REACT_PROMPT, react_options: List[Tool] = REACT_PLANNING_TOOLS, **kwargs) -> None:
+    def __init__(self,
+                 react_prompt: str = REACT_PROMPT,
+                 react_options: List[Tool] = REACT_PLANNING_TOOLS,
+                 react_formatted_response: Tool = REACT_FORMATTED_OUTPUT_TOOL,
+                 ** kwargs) -> None:
         super().__init__(**kwargs)
         self.react_options = react_options
         self.chain_of_thought_message_history = []
@@ -37,19 +42,20 @@ class ReactAgent(OpenAIAgent):
         self.tool_completion_prompt: str = (
             "You use the most appropriate tool based on the prompt\n"
         )
+        self.tool_map = self.__init_tools_map()
         self.react_completion_prompt: str = self.__generate_react_prompt()
         self.react_loop_history: List[ChatCompletionMessageParam] = [
             {"role": "system", "content": self.react_completion_prompt},
             * self.messages
         ]
-        self.tool_map = tool_map
+        self.react_formatted_response = react_formatted_response
 
-    async def run(self) -> ChatCompletionMessage:
+    async def run(self) -> FormattedResponse:
         """runs chain of thought"""
         # runs loop
         # returns response in format or non-formatted
         await self.__loop()
-        return
+        return await self.__generated_formatted_output()
 
     async def __loop(self) -> None:
         """runs loop for steps in chain of thought """
@@ -57,7 +63,6 @@ class ReactAgent(OpenAIAgent):
             # execute react completion, get the action
             response = await self.__run_react_step()
             # if completed break loop and return completion message
-            print(response)
             if response.choice == "ACTION":
                 action_response = await self.__run_tool_completion(prompt=response.prompt)
             elif response.choice == "THOUGHT":
@@ -85,17 +90,19 @@ class ReactAgent(OpenAIAgent):
         if len(message.tool_calls) == 0:
             # if no tools were called, an error should be
             # thrown since we want one step to be chosen
-            raise Exception("Neither Thought, Action, Complete were called")
+            raise Exception(
+                "Neither Thought, Action, Observe, Complete were called")
         func = message.tool_calls[0].function
         args = json.loads(func.arguments)
-        print(func, args)
         return ReactChoiceOutput(
             choice=args["choice"],
             prompt=args["prompt"]
         )
 
     async def __run_tool_completion(self, prompt: str) -> ChatCompletionAssistantMessageParam:
+        # returns OpenAI standardised format
         tools = self.__format_tools(self.tools)
+        # returns tool message from tool agent
         response = await self.client.chat.completions.create(
             model=self.model,
             messages=[
@@ -109,19 +116,36 @@ class ReactAgent(OpenAIAgent):
             tools=tools,
             tool_choice="required"
         )
+        # if no message throw error
+        if len(response.choices) == 0:
+            raise Exception("OpenAI had no response")
+
         message = response.choices[0].message
         if len(message.tool_calls) == 0:
             # if no tools were called, an error should be
             # thrown since we want one step to be chosen
             raise Exception("No tool was called")
+
         func = message.tool_calls[0].function
         args = json.loads(func.arguments)
         # execute function
         response: str = await self.tool_map[func.name](**args)
+        content: str = generate_prompt(
+            template=(
+                "Input Prompt:\n"
+                "{prompt}\n\n"
+                "Tool Response:\n"
+                "{response}"
+            ),
+            variables={
+                "prompt": prompt,
+                "response": response
+            }
+        )
         return {
             "role": "function",
             "name": func.name,
-            "content": f"Question: {prompt} \nAnswer: {response}"
+            "content": content
         }
 
     def __format_tools(self, tools: List[Tool]) -> List[Dict[str, Any]]:
@@ -136,6 +160,39 @@ class ReactAgent(OpenAIAgent):
             "Actions": self.__format_tools_to_action_prompt(self.tools)
         })
         return prompt
+
+    def __init_tools_map(self) -> Dict[str, Callable[..., Coroutine[Any, Any, str]]]:
+        """
+        takes in tools and initialises tool map
+        """
+        return {tool.name: tool.function for tool in self.tools}
+
+    async def __generated_formatted_output(self) -> FormattedResponse:
+        """
+        Takes in response and generates formatted output
+        """
+        format_tool = self.__format_tools([self.react_formatted_response])
+        response = await self.client.chat.completions.create(
+            model=self.model,
+            messages=self.react_loop_history,
+            temperature=self.temperature,
+            tools=format_tool,
+            tool_choice={"type": "function",
+                         "function":
+                         {"name": self.react_formatted_response.name}
+                         }
+        )
+        # if no message throw error
+        if len(response.choices) == 0:
+            raise Exception("OpenAI had no response")
+        message = response.choices[0].message
+        if len(message.tool_calls) == 0:
+            # if no tools were called, an error should be
+            # thrown since we want one step to be chosen
+            raise Exception("Message wasn't formatted")
+        func = message.tool_calls[0].function
+        args = json.loads(func.arguments)
+        return FormattedResponse(**args)
 
 
 async def search_tool(**kwargs) -> str:
@@ -153,11 +210,11 @@ if __name__ == "__main__":
     agent = ReactAgent(
         client=client,
         model="gpt-4o-mini",
-        temperature=0,
+        temperature=0.7,
         max_iterations=10,
         system_prompt="You are a helpful assistant",
         messages=[
-            {"role": "user", "content": "what is elon musk's current age times 2 + lionel messi's age"}
+            {"role": "user", "content": "what is elon musk age times 2"}
         ],
         tools=[
             Tool(
@@ -175,6 +232,7 @@ if __name__ == "__main__":
                             ]
 
                             },
+                function=calculator
             ),
             Tool(
                 name="search_tool",
@@ -190,13 +248,9 @@ if __name__ == "__main__":
                                 "query"
                             ]
                             },
-
+                function=search_tool
             )
-        ],
-        tool_map={
-            "calculator": calculator,
-            "search_tool": search_tool
-        })
+        ])
 
     async def run():
         response = await agent.run()

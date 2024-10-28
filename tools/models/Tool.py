@@ -1,4 +1,10 @@
-from typing import Any, Dict
+from typing import (
+    Any,
+    Dict,
+    Callable,
+    Coroutine,
+    Optional
+)
 from pydantic import BaseModel, Field
 
 
@@ -8,3 +14,4 @@ class Tool(BaseModel):
     description: str = Field(...)
     parameters: Dict[str, Any]
     strict: bool = Field(True)
+    function: Optional[Callable[..., Coroutine[Any, Any, str]]] = None
