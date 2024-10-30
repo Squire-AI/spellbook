@@ -14,6 +14,7 @@ features:
 import asyncio
 import json
 from datetime import datetime
+from pprint import pprint
 from typing import Any, Callable, Coroutine, Dict, List, Optional
 from openai import AsyncOpenAI
 from openai.types.chat import (ChatCompletionMessageParam,
@@ -22,8 +23,11 @@ from models import AppEnviron, OpenAIAgent
 from models.outputs.format import FormattedResponse
 from models.react.outputs import ReactChoiceOutput
 from models.run.RunCallbackMessage import RunStepActionType, RunStepCallbackMessage, RunStepStatus
-from tools.defaults.react import REACT_PLANNING_TOOLS, REACT_FORMATTED_OUTPUT_TOOL
-from prompts.templates.react import REACT_PROMPT
+from tools.defaults.react import (
+    REACT_PLANNING_TOOLS,
+    REACT_FORMATTED_OUTPUT_TOOL)
+from prompts.templates.react import (REACT_PROMPT, REACT_ACTION_PROMPT,
+                                     REACT_ACTION_FIELD_PROMPT)
 from prompts.generator import generate_prompt
 from tools.models import Tool
 environ: AppEnviron = AppEnviron()
@@ -37,8 +41,10 @@ class OpenAIReactAgent(OpenAIAgent):
                  react_prompt: str = REACT_PROMPT,
                  react_options: List[Tool] = REACT_PLANNING_TOOLS,
                  react_formatted_response: Tool = REACT_FORMATTED_OUTPUT_TOOL,
+                 debug: bool = False,
                  ** kwargs) -> None:
         super().__init__(**kwargs)
+        self.debug = debug
         self.react_options = react_options
         self.chain_of_thought_message_history = []
         self.react_prompt = react_prompt
@@ -66,22 +72,22 @@ class OpenAIReactAgent(OpenAIAgent):
         """runs loop for steps in chain of thought """
         for _ in range(self.max_iterations):
             # execute react completion, get the action
+
             response = await self.__run_react_step()
             # if completed break loop and return completion message
             if response.choice == "ACTION":
                 action_response = await self.__run_tool_completion(prompt=response.prompt)
             elif response.choice == "THOUGHT":
                 action_response = {"role": "assistant",
-                                   "content": response.prompt}
-            elif response.choice == "OBSERVE":
+                                   "content": f"[THOUGHT]: {response.prompt}"}
+            elif response.choice == "PAUSE":
                 action_response = {"role": "assistant",
-                                   "content": response.prompt}
-            elif response.choice == "EXTRACT":
-                action_response = {"role": "assistant",
-                                   "content": response.prompt}
-            if response.choice == "COMPLETE" or response.choice == "CLARIFICATION":
+                                   "content": f"[PAUSE]: {response.prompt}"}
+            if response.choice == "ANSWER":
                 return
             self.react_loop_history.append(action_response)
+            if self.debug:
+                pprint(self.react_loop_history[-1])
 
     async def __run_react_step(self) -> ReactChoiceOutput:
         """runs step in the chain of thought"""
@@ -110,14 +116,14 @@ class OpenAIReactAgent(OpenAIAgent):
         step_message = RunStepCallbackMessage(
             step_type=RunStepActionType[args["choice"]],
             status=RunStepStatus.PROCESSING,
-            content=args["response"],
+            content=args["prompt"],
             completed_at=datetime.now().isoformat()
         )
         await self.__set_status(id=step_message.id, step_message=step_message)
 
         return ReactChoiceOutput(
             choice=args["choice"],
-            prompt=args["response"]
+            prompt=args["prompt"]
         )
 
     async def __run_tool_completion(self, prompt: str) -> ChatCompletionAssistantMessageParam:
@@ -167,9 +173,10 @@ class OpenAIReactAgent(OpenAIAgent):
 
         content: str = generate_prompt(
             template=(
+                "[ACTION]:\n"
                 "Input Prompt:\n"
                 "{prompt}\n\n"
-                "Tool Response:\n"
+                "Action Response:\n"
                 "{response}"
             ),
             variables={
@@ -194,7 +201,23 @@ class OpenAIReactAgent(OpenAIAgent):
              } for tool in tools]
 
     def __format_tools_to_action_prompt(self, tools: List[Tool]) -> str:
-        return "\n\n".join([f"Name:{tool.name}\n Description: {tool.description}" for tool in tools])
+        actions: List[str] = []
+        for tool in tools:
+            action_field_prompts: List[str] = []
+            for action_field_name, action_details in tool.parameters["properties"].items():
+                action_field_prompt: str = generate_prompt(REACT_ACTION_FIELD_PROMPT, {
+                    "action_field_name": action_field_name,
+                    "action_field_description": action_details["description"],
+                    "action_field_type": action_details["type"]
+                })
+                action_field_prompts.append(action_field_prompt)
+            action_prompt: str = generate_prompt(REACT_ACTION_PROMPT, {
+                "action_name": tool.name,
+                "action_description": tool.description,
+                "action_fields": "\n".join(action_field_prompts)
+            })
+            actions.append(action_prompt)
+        return "\n\n".join(actions)
 
     def __generate_react_prompt(self) -> str:
         prompt = generate_prompt(self.react_prompt, {
@@ -235,7 +258,9 @@ class OpenAIReactAgent(OpenAIAgent):
             raise Exception("Message wasn't formatted")
         func = message.tool_calls[0].function
         args = json.loads(func.arguments)
-        return FormattedResponse(**args)
+        tools_used = list(
+            set([step.tool_used for _, step in self.run_history.items() if step.tool_used]))
+        return FormattedResponse(**{**args, "tools_used": tools_used})
 
     async def __set_status(self, id: str, step_message: RunStepCallbackMessage) -> None:
         self.run_history[id] = step_message

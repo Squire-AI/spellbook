@@ -15,8 +15,8 @@ class RunStepStatus(Enum):
 class RunStepActionType(Enum):
     ACTION = "action"
     THOUGHT = "thought"
-    OBSERVE = "observe"
-    COMPLETE = "complete"
+    PAUSE = "pause"
+    ANSWER = "answer"
 
 
 class RunStepCallbackMessage(BaseModel):

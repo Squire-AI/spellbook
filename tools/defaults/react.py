@@ -4,7 +4,7 @@ from ..models import Tool
 REACT_PLANNING_TOOLS: List[Tool] = [
     Tool(
         name="StepChoice",
-        description="You think step by step, this is a single step and you can choose between, THOUGHT, OBSERVE, ACTION, COMPLETE",
+        description="You think step by step, this is a single step and you can choose between, THOUGHT, ACTION, PAUSE, ANSWER",
         parameters={
             "type": "object",
             "properties": {
@@ -12,16 +12,16 @@ REACT_PLANNING_TOOLS: List[Tool] = [
                         "type": "string",
                         "enum": [
                             "THOUGHT",
-                            "OBSERVE",
+                            "PAUSE",
                             "ACTION",
-                            "COMPLETE"
+                            "ANSWER"
                         ],
                         "description": "The most appropriate step to take in the current step-by-step reasoning, if the task has been satisfied use COMPLETE"
                     },
                 "prompt": {
                         "type": "string",
-                        "description": "The most appropriate & descriptive prompt that describes what is needed in the current stage"
-                        }
+                        "description": "The most appropriate & descriptive prompt that describes what is needed in the current stage, for action, give as much detail as possible"
+                    }
             },
             "additionalProperties": False,
             "required": [
@@ -40,28 +40,50 @@ REACT_FORMATTED_OUTPUT_TOOL: Tool = Tool(
         "properties": {
             "content": {
                 "type": "string",
-                "description": "Text response to the user's query"
-            },
-            "sources": {
-                "type": "array",
-                "description": "List of sources used for responses, if no sources used, leave as empty",
-                "items": {
-                    "type": "string",
-                    "description": "name of the source used"
-                }
+                "description": "The formatted response string"
             },
             "tools_used": {
                 "type": "array",
-                "description": "List of tools used for responses, if no tools used, leave as empty",
+                "description": "An array of tools used in the process",
                 "items": {
                     "type": "string",
-                    "description": "name of the tool"
+                    "description": "Name of the tool used"
+                }
+            },
+            "sources": {
+                "type": "array",
+                "description": "Array of sources related to the information provided",
+                "items": {
+                    "type": "object",
+                    "properties": {
+                        "source": {
+                            "type": "string",
+                            "description": "Name of the source"
+                        },
+                        "url": {
+                            "type": "string",
+                            "description": "URL of the source"
+                        },
+                        "type": {
+                            "type": "string",
+                            "enum": [
+                                "document",
+                                "website"
+                            ],
+                            "description": "Type of the source, either document or website"
+                        }
+                    },
+                    "required": [
+                        "source",
+                        "url",
+                        "type"
+                    ]
                 }
             }
         },
         "additionalProperties": False,
         "required": [
-            "content", "sources", "tools_used"
+            "response", "sources", "tools_used"
         ]
-    },
+    }
 )

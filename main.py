@@ -12,249 +12,273 @@ features:
 - observability
 """
 import asyncio
-import json
-from datetime import datetime
-from typing import Any, Callable, Coroutine, Dict, List
 from openai import AsyncOpenAI
-from openai.types.chat import (ChatCompletionMessageParam,
-                               ChatCompletionAssistantMessageParam)
-from models import AppEnviron, OpenAIAgent
-from models.outputs.format import FormattedResponse
-from models.react.outputs import ReactChoiceOutput
-from models.run.RunCallbackMessage import RunStepActionType, RunStepCallbackMessage, RunStepStatus
-from tools.defaults.react import REACT_PLANNING_TOOLS, REACT_FORMATTED_OUTPUT_TOOL
-from prompts.templates.react import REACT_PROMPT
-from prompts.generator import generate_prompt
+from models import AppEnviron
 from tools.models import Tool
+from react import OpenAIReactAgent
+
+
 environ: AppEnviron = AppEnviron()
 client = AsyncOpenAI(api_key=environ.openai_api_key)
 
 
-class OpenAIReactAgent(OpenAIAgent):
+# class OpenAIReactAgent(OpenAIAgent):
 
-    def __init__(self,
-                 react_prompt: str = REACT_PROMPT,
-                 react_options: List[Tool] = REACT_PLANNING_TOOLS,
-                 react_formatted_response: Tool = REACT_FORMATTED_OUTPUT_TOOL,
-                 ** kwargs) -> None:
-        super().__init__(**kwargs)
-        self.react_options = react_options
-        self.chain_of_thought_message_history = []
-        self.react_prompt = react_prompt
-        self.tool_completion_prompt: str = (
-            "You use the most appropriate tool based on the prompt\n"
-        )
-        self.tool_map = self.__init_tools_map()
-        self.react_completion_prompt: str = self.__generate_react_prompt()
-        self.react_loop_history: List[ChatCompletionMessageParam] = [
-            {"role": "system", "content": self.react_completion_prompt},
-            * self.messages
-        ]
-        self.react_formatted_response = react_formatted_response
-        self.run_history: Dict[str, RunStepCallbackMessage] = {}
+#     def __init__(self,
+#                  react_prompt: str = REACT_PROMPT,
+#                  react_options: List[Tool] = REACT_PLANNING_TOOLS,
+#                  react_formatted_response: Tool = REACT_FORMATTED_OUTPUT_TOOL,
+#                  ** kwargs) -> None:
+#         super().__init__(**kwargs)
+#         self.react_options = react_options
+#         self.chain_of_thought_message_history = []
+#         self.react_prompt = react_prompt
+#         self.tool_completion_prompt: str = (
+#             "You use the most appropriate tool based on the prompt\n"
+#         )
+#         self.tool_map = self.__init_tools_map()
+#         self.react_completion_prompt: str = self.__generate_react_prompt()
+#         self.react_loop_history: List[ChatCompletionMessageParam] = [
+#             {"role": "system", "content": self.react_completion_prompt},
+#             * self.messages
+#         ]
+#         self.react_formatted_response = react_formatted_response
+#         self.run_history: Dict[str, RunStepCallbackMessage] = {}
 
-    async def run(self) -> FormattedResponse:
-        """runs chain of thought"""
-        # runs loop
-        # returns response in format or non-formatted
-        await self.__loop()
-        return await self.__generated_formatted_output()
+#     async def run(self) -> FormattedResponse:
+#         """runs chain of thought"""
+#         # runs loop
+#         # returns response in format or non-formatted
+#         await self.__loop()
+#         return await self.__generated_formatted_output()
 
-    async def __loop(self) -> None:
-        """runs loop for steps in chain of thought """
-        for _ in range(self.max_iterations):
-            # execute react completion, get the action
-            response = await self.__run_react_step()
-            # if completed break loop and return completion message
-            if response.choice == "ACTION":
-                action_response = await self.__run_tool_completion(prompt=response.prompt)
-            elif response.choice == "THOUGHT":
-                action_response = {"role": "assistant",
-                                   "content": response.prompt}
-            elif response.choice == "OBSERVE":
-                action_response = {"role": "assistant",
-                                   "content": response.prompt}
-            if response.choice == "COMPLETE":
-                return
-            self.react_loop_history.append(action_response)
+#     async def __loop(self) -> None:
+#         """runs loop for steps in chain of thought """
+#         for _ in range(self.max_iterations):
+#             # execute react completion, get the action
+#             response = await self.__run_react_step()
+#             # if completed break loop and return completion message
+#             if response.choice == "ACTION":
+#                 action_response = await self.__run_tool_completion(prompt=response.prompt)
+#             elif response.choice == "THOUGHT":
+#                 action_response = {"role": "assistant",
+#                                    "content": response.prompt}
+#             elif response.choice == "OBSERVE":
+#                 action_response = {"role": "assistant",
+#                                    "content": response.prompt}
+#             if response.choice == "COMPLETE":
+#                 return
+#             self.react_loop_history.append(action_response)
 
-    async def __run_react_step(self) -> ReactChoiceOutput:
-        """runs step in the chain of thought"""
+#     async def __run_react_step(self) -> ReactChoiceOutput:
+#         """runs step in the chain of thought"""
 
-        tools = self.__format_tools(self.react_options)
+#         tools = self.__format_tools(self.react_options)
 
-        response = await self.client.chat.completions.create(
-            model=self.model,
-            temperature=self.temperature,
-            messages=self.react_loop_history,
-            tools=tools,
-            tool_choice={"type": "function",
-                         "function": {"name": "StepChoice"}}
-        )
+#         response = await self.client.chat.completions.create(
+#             model=self.model,
+#             temperature=self.temperature,
+#             messages=self.react_loop_history,
+#             tools=tools,
+#             tool_choice={"type": "function",
+#                          "function": {"name": "StepChoice"}}
+#         )
 
-        message = response.choices[0].message
-        if len(message.tool_calls) == 0:
-            # if no tools were called, an error should be
-            # thrown since we want one step to be chosen
-            step_message.status = RunStepStatus.FAILED
-            raise Exception(
-                "Neither Thought, Action, Observe, Complete were called")
-        func = message.tool_calls[0].function
+#         message = response.choices[0].message
+#         if len(message.tool_calls) == 0:
+#             # if no tools were called, an error should be
+#             # thrown since we want one step to be chosen
+#             step_message.status = RunStepStatus.FAILED
+#             raise Exception(
+#                 "Neither Thought, Action, Observe, Complete were called")
+#         func = message.tool_calls[0].function
 
-        args = json.loads(func.arguments)
-        step_message = RunStepCallbackMessage(
-            step_type=RunStepActionType[args["choice"]],
-            status=RunStepStatus.PROCESSING,
-            content=args["prompt"],
-            completed_at=datetime.now().isoformat()
-        )
-        self.__set_status(id=step_message.id, step_message=step_message)
+#         args = json.loads(func.arguments)
+#         step_message = RunStepCallbackMessage(
+#             step_type=RunStepActionType[args["choice"]],
+#             status=RunStepStatus.PROCESSING,
+#             content=args["prompt"],
+#             completed_at=datetime.now().isoformat()
+#         )
+#         self.__set_status(id=step_message.id, step_message=step_message)
 
-        return ReactChoiceOutput(
-            choice=args["choice"],
-            prompt=args["prompt"]
-        )
+#         return ReactChoiceOutput(
+#             choice=args["choice"],
+#             prompt=args["prompt"]
+#         )
 
-    async def __run_tool_completion(self, prompt: str) -> ChatCompletionAssistantMessageParam:
-        # returns OpenAI standardised format
-        tools = self.__format_tools(self.tools)
-        step_message = RunStepCallbackMessage(
-            step_type=RunStepActionType.ACTION, status=RunStepStatus.PROCESSING)
-        # returns tool message from tool agent
-        response = await self.client.chat.completions.create(
-            model=self.model,
-            messages=[
-                {
-                    "role": "system",
-                    "content": self.tool_completion_prompt
-                },
-                {"role": "user", "content": prompt}
-            ],
-            temperature=self.temperature,
-            tools=tools,
-            tool_choice="required"
-        )
-        # if no message throw error
-        if len(response.choices) == 0:
-            step_message.status = RunStepStatus.FAILED
-            raise Exception("OpenAI had no response")
+#     async def __run_tool_completion(self, prompt: str) -> ChatCompletionAssistantMessageParam:
+#         # returns OpenAI standardised format
+#         tools = self.__format_tools(self.tools)
+#         step_message = RunStepCallbackMessage(
+#             step_type=RunStepActionType.ACTION, status=RunStepStatus.PROCESSING)
+#         # returns tool message from tool agent
+#         response = await self.client.chat.completions.create(
+#             model=self.model,
+#             messages=[
+#                 {
+#                     "role": "system",
+#                     "content": self.tool_completion_prompt
+#                 },
+#                 {"role": "user", "content": prompt}
+#             ],
+#             temperature=self.temperature,
+#             tools=tools,
+#             tool_choice="required"
+#         )
+#         # if no message throw error
+#         if len(response.choices) == 0:
+#             step_message.status = RunStepStatus.FAILED
+#             raise Exception("OpenAI had no response")
 
-        message = response.choices[0].message
-        if len(message.tool_calls) == 0:
-            # if no tools were called, an error should be
-            # thrown since we want one step to be chosen
-            step_message.status = RunStepStatus.FAILED
-            raise Exception("No tool was called")
+#         message = response.choices[0].message
+#         if len(message.tool_calls) == 0:
+#             # if no tools were called, an error should be
+#             # thrown since we want one step to be chosen
+#             step_message.status = RunStepStatus.FAILED
+#             raise Exception("No tool was called")
 
-        func = message.tool_calls[0].function
-        args = json.loads(func.arguments)
-        # execute function
-        step_message.args = args
-        step_message.tool_used = func.name
-        self.__set_status(id=step_message.id, step_message=step_message)
+#         func = message.tool_calls[0].function
+#         args = json.loads(func.arguments)
+#         # execute function
+#         step_message.args = args
+#         step_message.tool_used = func.name
+#         self.__set_status(id=step_message.id, step_message=step_message)
 
-        response: str = await self.tool_map[func.name](**args)
+#         response: str = await self.tool_map[func.name](**args)
 
-        step_message.status = RunStepStatus.COMPLETED
-        step_message.completed_at = datetime.now().isoformat()
+#         step_message.status = RunStepStatus.COMPLETED
+#         step_message.completed_at = datetime.now().isoformat()
 
-        self.__set_status(id=step_message.id, step_message=step_message)
+#         self.__set_status(id=step_message.id, step_message=step_message)
 
-        content: str = generate_prompt(
-            template=(
-                "Input Prompt:\n"
-                "{prompt}\n\n"
-                "Tool Response:\n"
-                "{response}"
-            ),
-            variables={
-                "prompt": prompt,
-                "response": response
-            }
-        )
-        return {
-            "role": "function",
-            "name": func.name,
-            "content": content
-        }
+#         content: str = generate_prompt(
+#             template=(
+#                 "Input Prompt:\n"
+#                 "{prompt}\n\n"
+#                 "Tool Response:\n"
+#                 "{response}"
+#             ),
+#             variables={
+#                 "prompt": prompt,
+#                 "response": response
+#             }
+#         )
+#         return {
+#             "role": "function",
+#             "name": func.name,
+#             "content": content
+#         }
 
-    def __format_tools(self, tools: List[Tool]) -> List[Dict[str, Any]]:
-        return [
-            {"function":
-             {"name": tool.name,
-              "description": tool.description,
-                 "parameters": tool.parameters
-              },
-             "type": "function"
-             } for tool in tools]
+#     def __format_tools(self, tools: List[Tool]) -> List[Dict[str, Any]]:
+#         return [
+#             {"function":
+#              {"name": tool.name,
+#               "description": tool.description,
+#                  "parameters": tool.parameters
+#               },
+#              "type": "function"
+#              } for tool in tools]
 
-    def __format_tools_to_action_prompt(self, tools: List[Tool]) -> str:
-        return "\n\n".join([f"Name:{tool.name}\n Description: {tool.description}" for tool in tools])
+#     def __format_tools_to_action_prompt(self, tools: List[Tool]) -> str:
+#         return "\n\n".join([f"Name:{tool.name}\n Description: {tool.description}" for tool in tools])
 
-    def __generate_react_prompt(self) -> str:
-        prompt = generate_prompt(self.react_prompt, {
-            "SystemPrompt": self.system_prompt,
-            "Actions": self.__format_tools_to_action_prompt(self.tools)
-        })
-        return prompt
+#     def __generate_react_prompt(self) -> str:
+#         prompt = generate_prompt(self.react_prompt, {
+#             "SystemPrompt": self.system_prompt,
+#             "Actions": self.__format_tools_to_action_prompt(self.tools)
+#         })
+#         return prompt
 
-    def __init_tools_map(self) -> Dict[str, Callable[..., Coroutine[Any, Any, str]]]:
-        """
-        takes in tools and initialises tool map
-        """
-        return {tool.name: tool.function for tool in self.tools}
+#     def __init_tools_map(self) -> Dict[str, Callable[..., Coroutine[Any, Any, str]]]:
+#         """
+#         takes in tools and initialises tool map
+#         """
+#         return {tool.name: tool.function for tool in self.tools}
 
-    async def __generated_formatted_output(self) -> FormattedResponse:
-        """
-        Takes in response and generates formatted output
-        """
-        format_tool = self.__format_tools([self.react_formatted_response])
-        response = await self.client.chat.completions.create(
-            model=self.model,
-            messages=self.react_loop_history,
-            temperature=self.temperature,
-            tools=format_tool,
-            tool_choice={
-                "type": "function",
-                "function":
-                {"name": self.react_formatted_response.name}
-            }
-        )
-        # if no message throw error
-        if len(response.choices) == 0:
-            raise Exception("OpenAI had no response")
-        message = response.choices[0].message
-        if len(message.tool_calls) == 0:
-            # if no tools were called, an error should be
-            # thrown since we want one step to be chosen
-            raise Exception("Message wasn't formatted")
-        func = message.tool_calls[0].function
-        args = json.loads(func.arguments)
-        return FormattedResponse(**args)
+#     async def __generated_formatted_output(self) -> FormattedResponse:
+#         """
+#         Takes in response and generates formatted output
+#         """
+#         format_tool = self.__format_tools([self.react_formatted_response])
+#         response = await self.client.chat.completions.create(
+#             model=self.model,
+#             messages=self.react_loop_history,
+#             temperature=self.temperature,
+#             tools=format_tool,
+#             tool_choice={
+#                 "type": "function",
+#                 "function":
+#                 {"name": self.react_formatted_response.name}
+#             }
+#         )
+#         # if no message throw error
+#         if len(response.choices) == 0:
+#             raise Exception("OpenAI had no response")
+#         message = response.choices[0].message
+#         if len(message.tool_calls) == 0:
+#             # if no tools were called, an error should be
+#             # thrown since we want one step to be chosen
+#             raise Exception("Message wasn't formatted")
+#         func = message.tool_calls[0].function
+#         args = json.loads(func.arguments)
+#         return FormattedResponse(**args)
 
-    def __set_status(self, id: str, step_message: RunStepCallbackMessage) -> None:
-        self.run_history[id] = step_message
-        print("run history", [value for _,
-              value in self.run_history.items()][-1])
+#     def __set_status(self, id: str, step_message: RunStepCallbackMessage) -> None:
+#         self.run_history[id] = step_message
+#         print("run history", [value for _,
+#               value in self.run_history.items()][-1])
+async def add_to_calendar(**kwargs) -> str:
+    name = kwargs.get("name", "No Name Provided")
+    description = kwargs.get("description", "No Description Provided")
+    start_datetime = kwargs.get("start_datetime", "No Start DateTime Provided")
+    end_datetime = kwargs.get("end_datetime", "No End DateTime Provided")
+    location = kwargs.get("location", "No Location Provided")
+    response = f"""Added the following to calendar: \n\t Event: {name}, Description: {description}, Start: {
+        start_datetime}, End: {end_datetime}, Location: {location}"""
+    print(response)
+    return response
+
+
+async def draft_to_email(**kwargs) -> str:
+
+    pass
 
 
 async def search_tool(**kwargs) -> str:
-    return """Elon musk is 55 yrs old, lionel messi is 33"""
+    return """Liverpool 3-1 Chelsea ,source_type:website source:ESPN source_url:https://espn.com """
 
 
 async def calculator(**kwargs) -> str:
     return "110"
 
 
+async def on_update(**kwargs) -> str:
+    # print("run history", [value for _,
+    #                       value in kwargs.items()][-1])
+    pass
+
 if __name__ == "__main__":
     agent = OpenAIReactAgent(
+        debug=True,
         client=client,
         model="gpt-4o-mini",
-        temperature=0.7,
-        max_iterations=10,
+        temperature=0,
+        max_iterations=30,
         system_prompt="You are a helpful assistant",
         messages=[
-            {"role": "user", "content": "what is elon musk's current age times 2"}
+            {
+                "role": "user",
+                "content": "what is the current score for the liverpool game"
+            }
+            # {"role": "user",
+            #   "content": [{"type": "text", "text": "what is going on here?"},
+            #               {
+            #       "type": "image_url",
+            #       "image_url": {
+            #           "url": "https://i.ibb.co/LSdX0RF/photo-6316392868339629238-y-1.jpg",
+            #       },
+            #   },]}
         ],
         tools=[
             Tool(
@@ -291,8 +315,43 @@ if __name__ == "__main__":
                             ]
                             },
                 function=search_tool
+            ),
+            Tool(
+                id="xyz",
+                name="add_event_to_calendar",
+                description="adds a single calendar event to calendar",
+                parameters={"type": "object",
+                            "additionalProperties": False,
+                            "properties": {
+                                "name": {
+                                    "type": "string",
+                                    "description": "name of the event"
+                                },
+                                "description": {
+                                    "type": "string",
+                                    "description": "description of the event"
+                                },
+                                "start_datetime": {
+                                    "type": "string",
+                                    "description": "start datetime in ISO format"
+                                },
+                                "end_datetime": {
+                                    "type": "string",
+                                    "description": "end datetime in ISO format"
+                                },
+                                "location": {
+                                    "type": "string",
+                                    "description": "location of event, if nothing, leave as empty string"
+                                }},
+                            "required": [
+                                "query"
+                            ]
+                            },
+                function=add_to_calendar
             )
-        ])
+        ],
+        on_step_update=on_update
+    )
 
     async def run():
         response = await agent.run()

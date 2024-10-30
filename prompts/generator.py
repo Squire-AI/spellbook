@@ -18,7 +18,7 @@ def validate_prompt_variables(template: str, variables: Dict[str, str]) -> None:
     """
     variables_in_prompt = re.findall(r'\{(.*?)\}', template)
     variables_in_prompt = [var for var in variables_in_prompt if isinstance(
-        var, str) and re.match(r'^[A-Za-z0-9]+$', var)]
+        var, str) and re.match(r'^[A-Za-z0-9_]+$', var)]
     variable_names = set(variables.keys())
     intersect = variable_names.intersection(set(variables_in_prompt))
     if len(variable_names) != len(intersect):

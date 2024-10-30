@@ -4,5 +4,5 @@ from pydantic import BaseModel
 
 class ReactChoiceOutput(BaseModel):
     choice: Union[Literal["THOUGHT"], Literal["ACTION"],
-                  Literal["COMPLETE"], Literal["OBSERVE"]]
+                  Literal["ANSWER"], Literal["PAUSE"]]
     prompt: str
