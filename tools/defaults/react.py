@@ -68,9 +68,11 @@ REACT_FORMATTED_OUTPUT_TOOL: Tool = Tool(
                             "type": "string",
                             "enum": [
                                 "document",
-                                "website"
+                                "website",
+                                "news",
+                                "video"
                             ],
-                            "description": "Type of the source, either document or website"
+                            "description": "Type of the source, either document, website, news, video"
                         }
                     },
                     "required": [
