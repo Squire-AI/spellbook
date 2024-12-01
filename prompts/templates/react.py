@@ -1,13 +1,14 @@
 REACT_PROMPT: str = (
     "{SystemPrompt}\n\n"
-    "You operate in a cycle of Thought, Action, PAUSE, and Observation.\n"
+    "You operate in a cycle of Thought, Action, Pause, and Observation.\n"
     "At the conclusion of this cycle, you provide an Answer.\n"
     "Utilize Thought to articulate your considerations regarding the question posed.\n"
     "Employ Action to execute one of the available actions, followed by PAUSE.\n"
     "Observation reflects the outcomes of these actions.\n\n"
     "The actions you can perform are:\n\n"
     "{Actions}\n\n"
-    "Begin by methodically contemplating how to address this problem."
+    "Begin by methodically contemplating how to address this problem.\n"
+    "At any point, if you require user clarification, break the cycle and ask, do not wait or assume."
 )
 
 REACT_ACTION_PROMPT: str = (

@@ -72,7 +72,7 @@ class OpenAIReactAgent(OpenAIAgent):
         """runs loop for steps in chain of thought """
         for _ in range(self.max_iterations):
             # execute react completion, get the action
-
+            action_response = None
             response = await self.__run_react_step()
             # if completed break loop and return completion message
             if response.choice == "ACTION":
@@ -85,7 +85,8 @@ class OpenAIReactAgent(OpenAIAgent):
                                    "content": f"[PAUSE]: {response.prompt}"}
             if response.choice == "ANSWER":
                 return
-            self.react_loop_history.append(action_response)
+            if action_response:
+                self.react_loop_history.append(action_response)
             if self.debug:
                 pprint(self.react_loop_history[-1])
 
@@ -104,12 +105,7 @@ class OpenAIReactAgent(OpenAIAgent):
         )
 
         message = response.choices[0].message
-        if len(message.tool_calls) == 0:
-            # if no tools were called, an error should be
-            # thrown since we want one step to be chosen
-            step_message.status = RunStepStatus.FAILED
-            raise Exception(
-                "Neither Thought, Action, Observe, Complete were called")
+
         func = message.tool_calls[0].function
 
         args = json.loads(func.arguments)
@@ -119,6 +115,12 @@ class OpenAIReactAgent(OpenAIAgent):
             content=args["prompt"],
             completed_at=datetime.now().isoformat()
         )
+        if len(message.tool_calls) == 0:
+            # if no tools were called, an error should be
+            # thrown since we want one step to be chosen
+            step_message.status = RunStepStatus.FAILED
+            raise Exception(
+                "Neither Thought, Action, Observe, Complete were called")
         await self.__set_status(id=step_message.id, step_message=step_message)
 
         return ReactChoiceOutput(
@@ -265,3 +267,4 @@ class OpenAIReactAgent(OpenAIAgent):
     async def __set_status(self, id: str, step_message: RunStepCallbackMessage) -> None:
         self.run_history[id] = step_message
         await self.on_step_update(**self.run_history)
+        print(self.run_history)

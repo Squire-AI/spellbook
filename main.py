@@ -12,6 +12,7 @@ features:
 - observability
 """
 import asyncio
+import json
 from openai import AsyncOpenAI
 from models import AppEnviron
 from tools.models import Tool
@@ -57,22 +58,22 @@ if __name__ == "__main__":
         debug=True,
         client=client,
         model="gpt-4o-mini",
-        temperature=0.7,
+        temperature=0,
         max_iterations=30,
         system_prompt="You are a helpful assistant",
         messages=[
-            {
-                "role": "user",
-                "content": "add the following to my calendar, date night on 03/12/24 from 7-9, study 04/12/24 3-4pm "
-            }
-            # {"role": "user",
-            #   "content": [{"type": "text", "text": "add this to my calendar"},
-            #               {
-            #       "type": "image_url",
-            #       "image_url": {
-            #           "url": "https://i.ibb.co/LSdX0RF/photo-6316392868339629238-y-1.jpg",
-            #       },
-            #   },]}
+            # {
+            #     "role": "user",
+            #     "content": "what's the score for liverpool's game"
+            # }
+            {"role": "user",
+              "content": [{"type": "text", "text": "add all events to my calendar"},
+                          {
+                  "type": "image_url",
+                  "image_url": {
+                      "url": "https://i.ibb.co/LSdX0RF/photo-6316392868339629238-y-1.jpg",
+                  },
+              },]}
         ],
         tools=[
             Tool(
@@ -149,5 +150,14 @@ if __name__ == "__main__":
 
     async def run():
         response = await agent.run()
-        print(response)
+        with open("run_logs.json", "w") as json_file:
+            loop_history = [part
+                            for part in agent.react_loop_history]
+            run_history = {run_id: run.model_dump(
+                mode="json") for run_id, run in agent.run_history.items()}
+
+            json_file.write(json.dumps({
+                "runs": run_history,
+                "loop": loop_history
+            }))
     asyncio.run(run())

@@ -27,6 +27,6 @@ class OpenAIAgent(ABC):
         self.tools = tools
 
     @abstractmethod
-    def run(self) -> any:
+    async def run(self) -> any:
         """Run must be implemented in higher level use of open ai agent base class"""
         pass
