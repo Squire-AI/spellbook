@@ -16,16 +16,17 @@ NOTES:
               of another tool.
             - There must be a way to merge these two steps into one, a "single-level" tool.
 """
+import time
+import os
+from pprint import pprint
+import re
+import json
 import logging
 import asyncio
 from enum import StrEnum
-import json
-import os
 from pydantic import BaseModel, ConfigDict
 from typing import Any, Callable, Coroutine, Dict, List, Optional
-from pprint import pprint
 from openai import AsyncClient as OpenAIClient
-import re
 from openai.types.chat import ChatCompletionMessageParam
 
 
@@ -49,15 +50,18 @@ def validate_prompt_variables(template: str, variables: Dict[str, str]) -> None:
         var, str) and re.match(r'^[A-Za-z0-9_]+$', var)]
     variable_names = set(variables.keys())
     intersect = variable_names.intersection(set(variables_in_prompt))
-
     if len(variable_names) != len(intersect):
         print(variable_names, intersect)
         remain = ",".join(variable_names-intersect)
         raise Exception(f"Prompt variable(s): {remain} is not within prompt")
 
 
+model = "gpt-4o-mini"
 client = OpenAIClient()
-# groq_client = OpenAIClient(
+
+
+# model = "llama-3.1-70b-versatile"
+# client = OpenAIClient(
 #     base_url="https://api.groq.com/openai/v1",
 #     api_key=os.environ["GROQ_API_KEY"]
 # )
@@ -323,7 +327,8 @@ class ToolUsePlanner:
                                         "properties": {
                                             "name": {
                                                 "type": "string",
-                                                "description": "Name of the tool"
+                                                "description": "Name of the tool",
+                                                "enum": [tool.name for tool in self.tools]
                                             },
                                             "parameters": {
                                                 "type": "string",
@@ -353,8 +358,11 @@ class ToolUsePlanner:
         )
         # validates llm generated steps
         self._validate_llm_response(response=response)
-        steps = [ToolStep(name=tool_step["name"], parameters=json.loads(tool_step["parameters"])) for tool_step in json.loads(
-            response.choices[0].message.tool_calls[0].function.arguments)["steps"]]
+        tool_calls = response.choices[0].message.tool_calls
+        function_arguments = json.loads(tool_calls[0].function.arguments)
+        steps_data = function_arguments["steps"]
+        steps = [ToolStep(name=step["name"], parameters=json.loads(
+            step["parameters"])) for step in steps_data]
 
         self._validate_step_args(steps=steps)
         return steps
@@ -413,6 +421,9 @@ class ToolUsePlanner:
         self.messages = messages
 
     def clear_messages(self) -> None:
+        """
+        clear message 
+        """
         self.messages = []
 
     def _generate_function_map(self) -> Dict[str, Coroutine[Any, Any, str]]:
@@ -425,7 +436,7 @@ class ToolUsePlanner:
         return self._functions_map
 
 # generated_tool_steps = client.chat.completions.create(
-#     model="gpt-4o-mini",
+#     model=model,
 #     temperature=0,
 #     messages=[
 #         {
@@ -591,6 +602,7 @@ class PlannerAgent:
         run planner agent
         """
         steps = await self._generate_plan()
+
         current_prompt = None
         for _, step in enumerate(steps):
             # get integration prompt
@@ -604,14 +616,7 @@ class PlannerAgent:
             elif step.name == "AssistantTool":
                 completion = await self._run_assistant_tool(prompt=prompt)
                 response_prompt = completion.content
-            # if not response_prompt:
-            #     raise ValueError("No response was given")
-            # if i == 0:
-            #     current_prompt = self._generate_recursive_prompt(
-            #         response_prompt, "")
-            # elif i > 0 and current_prompt:
-            #     current_prompt = self._generate_recursive_prompt(
-            #         response_prompt, current_prompt)
+
             self.add_message(
                 {
                     "role": "assistant",
@@ -725,6 +730,7 @@ async def add_event_to_calendar(name: str, description: str, start_datetime: str
     Adds a single event to the calendar and returns the event name.
     """
     logging.info("Function: add_event_to_calendar - Adding event to calendar")
+
     # Logic to add event to calendar would go here
     return f"Added {name}"
 
@@ -735,6 +741,7 @@ async def update_event_in_calendar(event_id: str, name: str, description: str, s
     """
     logging.info(
         "Function: update_event_in_calendar - Updating event in calendar")
+
     # Logic to update event in calendar would go here
     return f"Updated {name}"
 
@@ -745,6 +752,7 @@ async def delete_event_from_calendar(event_id: str) -> str:
     """
     logging.info(
         "Function: delete_event_from_calendar - Deleting event from calendar")
+
     # Logic to delete event from calendar would go here
     return f"Deleted event with ID {event_id}"
 
@@ -755,6 +763,7 @@ async def search_event_in_calendar(query: str, start_datetime: str, end_datetime
     """
     logging.info(
         "Function: search_event_in_calendar - Searching for events in calendar")
+
     # Logic to search events in calendar would go here
     return f"Searched for events with query '{query}'"
 
@@ -764,6 +773,7 @@ async def send_email(recipient: str, subject: str, body: str) -> str:
     Sends an email with the specified content and subject and returns a confirmation message.
     """
     logging.info("Function: send_email - Sending email")
+
     # Logic to send email would go here
     return f"Email sent to {recipient} with subject '{subject}'"
 
@@ -773,6 +783,7 @@ async def draft_email(subject: str, body: str) -> str:
     Drafts an email with the specified content and subject and returns a draft confirmation.
     """
     logging.info("Function: draft_email - Drafting email")
+
     # Logic to draft email would go here
     return f"Drafted email with subject '{subject}'"
 
@@ -782,6 +793,7 @@ async def search_email(query: str, date_range: str) -> str:
     Searches through emails based on a query and date range and returns the search query.
     """
     logging.info("Function: search_email - Searching emails")
+
     # Logic to search emails would go here
     return f"Searched emails with query '{query}' in date range '{date_range}'"
 
@@ -790,7 +802,7 @@ if __name__ == "__main__":
 
     calendar_planner = ToolUsePlanner(
         client=client,
-        model="gpt-4o-mini",
+        model=model,
         messages=[],
         tools=[
             Tool(
@@ -856,7 +868,7 @@ if __name__ == "__main__":
     )
     email_planner = ToolUsePlanner(
         client=client,
-        model="gpt-4o-mini",
+        model=model,
         messages=[],
         tools=[
             Tool(
@@ -898,7 +910,7 @@ if __name__ == "__main__":
     )
     planner_agent = PlannerAgent(
         client=client,
-        model="gpt-4o-mini",
+        model=model,
         system_prompt="You are a helpful assistant",
         integrations=[
             PlannerIntegration(
@@ -913,12 +925,21 @@ if __name__ == "__main__":
             {
                 "role": "user",
                 "content": (
+                    # "who is elon musk,draft a summary to my email"
                     "Hi! I need to add three new calendar events. First, a project kickoff meeting on March 15, 2024, "
                     "at 10:00 AM. Second, a team brainstorming session on March 20, 2024, at 2:00 PM. "
                     "Lastly, a client review meeting on March 25, 2024, at 1:00 PM. Could you also draft a summary "
                     "of these events and add it into my email?"
                 )
             }
+            # {"role": "user",
+            #  "content": [{"type": "text", "text": "add all events to my calendar"},
+            #              {
+            #      "type": "image_url",
+            #      "image_url": {
+            #          "url": "https://i.ibb.co/LSdX0RF/photo-6316392868339629238-y-1.jpg",
+            #      },
+            #  },]}
         ]
     )
     response = asyncio.run(
@@ -927,7 +948,7 @@ if __name__ == "__main__":
     print(response)
     # step_planner = ToolUsePlanner(
     #     client=client,
-    #     model="gpt-4o-mini",
+    #     model=model,
     #     prompt_template=STEPS_PLANNER_PROMPT_TEMPLATE,
     #     messages=[
     #         {
