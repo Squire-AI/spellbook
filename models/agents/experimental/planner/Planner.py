@@ -25,7 +25,7 @@ import logging
 import asyncio
 from enum import StrEnum
 from pydantic import BaseModel, ConfigDict
-from typing import Any, Callable, Coroutine, Dict, List, Optional
+from typing import Any, Callable, Coroutine, Dict, List, Literal, Optional, Type
 from openai import AsyncClient as OpenAIClient
 from openai.types.chat import ChatCompletionMessageParam
 
@@ -57,14 +57,25 @@ def validate_prompt_variables(template: str, variables: Dict[str, str]) -> None:
 
 
 model = "gpt-4o-mini"
-client = OpenAIClient()
+openai_client = OpenAIClient()
+groq_client = OpenAIClient(
+    base_url="https://api.groq.com/openai/v1",
+    api_key=os.environ["GROQ_API_KEY"]
+)
 
+model_map: Dict[Literal["gpt-4o",
+                        "gpt-4o-mini",
+                        "llama3-groq-8b-8192-tool-use-preview",
+                        "llama3-groq-70b-8192-tool-use-preview",
+                        "mixtral-8x7b-32768"
+                        ], OpenAIClient] = {
+    "gpt-4o-mini": openai_client,
+    "gpt-4o": openai_client,
+    "llama3-groq-70b-8192-tool-use-preview": groq_client,
+    "llama3-groq-8b-8192-tool-use-preview": groq_client,
+    "mixtral-8x7b-32768": groq_client
+}
 
-# model = "llama-3.1-70b-versatile"
-# client = OpenAIClient(
-#     base_url="https://api.groq.com/openai/v1",
-#     api_key=os.environ["GROQ_API_KEY"]
-# )
 
 
 TOOLS_PLANNER_PROMPT_TEMPLATE = (
@@ -434,90 +445,6 @@ class ToolUsePlanner:
         gets the function map of the tool
         """
         return self._functions_map
-
-# generated_tool_steps = client.chat.completions.create(
-#     model=model,
-#     temperature=0,
-#     messages=[
-#         {
-#             "role": "system",
-#             "content": TOOLS_PROMPT
-#         },
-#         # {"role": "user",
-#         #     "content": [{"type": "text", "text": "add all events to my calendar"},
-#         #                 {
-#         #         "type": "image_url",
-#         #         "image_url": {
-#         #             "url": "https://i.ibb.co/LSdX0RF/photo-6316392868339629238-y-1.jpg",
-#         #         },
-#         #     },]}
-#         {
-#             "role": "user",
-#             "content": (
-#                 "Hey there! Could you help me out by adding a few events to my calendar? "
-#                 "First up, I've got a team meeting where we'll chat about project milestones and deliverables. "
-#                 "It's happening on June 23, 2024, from 9 AM in Conference Room A. "
-#                 "Then, there's a client presentation scheduled for the same day from 11 AM to noon, "
-#                 "and we'll be doing that over Zoom. Finally, I've got a lunch date with a partner to discuss "
-#                 "some collaboration opportunities at Downtown Bistro, from 1 PM to 2 PM. Thanks a bunch!"
-#                 "I want you to summarise all of it then write an email about it"
-#             )
-#         }
-#     ],
-#     tools=[
-#         {
-#             "type": "function",
-#             "function": {
-#                 "name": "list_tool_use_steps",
-#                 "description": "Creates a list of tool use steps, with the required parameters",
-#                 "parameters": {
-#                     "type": "object",
-#                     "required": [
-#                         "steps"
-#                     ],
-#                     "properties": {
-#                         "steps": {
-#                             "type": "array",
-#                             "description": "An array of tool use parameters",
-#                             "items": {
-#                                 "type": "object",
-#                                 "properties": {
-#                                     "name": {
-#                                         "type": "string",
-#                                         "description": "Name of the tool"
-#                                     },
-#                                     "parameters": {
-#                                         "type": "string",
-#                                         "description": "stringified JSON of tool parameters"
-#                                     },
-
-#                                 },
-#                                 "additionalProperties": False,
-#                                 "required": [
-#                                     "name",
-#                                     "parameters"
-#                                 ]
-#                             }
-#                         }
-#                     },
-#                     "additionalProperties": False
-#                 },
-#                 "strict": True
-#             }
-#         }
-#     ],
-#     tool_choice={
-#         "type": "function",
-#                 "function":
-#                 {"name": "list_tool_use_steps"}
-#     }
-# ).choices[0].message.tool_calls[0].function.arguments
-
-# pprint(generated_tool_steps)
-
-# tool_steps = [{"tool_name": step["name"], "parameters": json.loads(
-#     step["parameters"])} for step in json.loads(generated_tool_steps)["steps"]]
-# pprint(tool_steps)
 
 
 class PlannerIntegration(BaseModel):
